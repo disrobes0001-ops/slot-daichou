@@ -1,8 +1,14 @@
-var CACHE_NAME = 'sdc-shell-v6';
+var CACHE_NAME = 'sdc-shell-v7';
 var SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', function(e){
-  e.waitUntil(caches.open(CACHE_NAME).then(function(cache){ return cache.addAll(SHELL); }));
+  e.waitUntil(
+    caches.open(CACHE_NAME).then(function(cache){
+      return Promise.all(SHELL.map(function(url){
+        return fetch(url, {cache:'no-store'}).then(function(res){ return cache.put(url, res); });
+      }));
+    })
+  );
   self.skipWaiting();
 });
 
@@ -18,7 +24,7 @@ self.addEventListener('activate', function(e){
 self.addEventListener('fetch', function(e){
   if(e.request.method !== 'GET') return;
   e.respondWith(
-    fetch(e.request).then(function(res){
+    fetch(e.request, {cache:'no-store'}).then(function(res){
       var copy = res.clone();
       caches.open(CACHE_NAME).then(function(cache){ cache.put(e.request, copy); });
       return res;
