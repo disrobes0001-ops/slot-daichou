@@ -669,32 +669,47 @@
   })();
 
   // ---------- swipe-down-to-close for the add/edit sheet ----------
+  // Works from anywhere on the sheet (not just the handle), like an iOS
+  // modal: while the content is scrolled to the top, a downward drag pulls
+  // the sheet closed instead of scrolling; once you're mid-scroll it just
+  // scrolls normally until you're back at the top.
   (function(){
     var sheet = formOvl.querySelector('.sheet');
-    var handle = formOvl.querySelector('.sheetHandle');
-    var startY = 0, dy = 0, dragging = false;
-    function start(y){ dragging = true; dy = 0; sheet.classList.add('dragging'); startY = y; }
-    function move(y){
-      if(!dragging) return;
+    var startY = 0, dy = 0, dragging = false, tracking = false;
+    function isInteractive(el){
+      return !!(el.closest && el.closest('input, textarea, select, button, .formImgItem, .imgpick'));
+    }
+    function start(y, target){
+      if(target && isInteractive(target)){ tracking = false; return; }
+      tracking = true; dragging = false; dy = 0; startY = y;
+    }
+    function move(y, ev){
+      if(!tracking) return;
+      if(!dragging){
+        if(sheet.scrollTop > 0 || y - startY <= 0){ startY = y; return; }
+        dragging = true; sheet.classList.add('dragging');
+      }
       dy = Math.max(0, y - startY);
       sheet.style.transform = 'translateY('+dy+'px)';
+      if(ev && ev.cancelable) ev.preventDefault();
     }
     function end(){
-      if(!dragging) return;
-      dragging = false;
-      sheet.classList.remove('dragging');
-      if(dy > 80){
-        sheet.style.transform = 'translateY(100%)';
-        setTimeout(function(){ closeForm(); sheet.style.transform = ''; }, 200);
-      } else {
-        sheet.style.transform = '';
+      if(dragging){
+        sheet.classList.remove('dragging');
+        if(dy > 80){
+          sheet.style.transform = 'translateY(100%)';
+          setTimeout(function(){ closeForm(); sheet.style.transform = ''; }, 200);
+        } else {
+          sheet.style.transform = '';
+        }
       }
+      tracking = false; dragging = false;
     }
-    handle.addEventListener('touchstart', function(e){ start(e.touches[0].clientY); }, {passive:true});
-    handle.addEventListener('touchmove', function(e){ move(e.touches[0].clientY); }, {passive:true});
-    handle.addEventListener('touchend', end);
-    handle.addEventListener('mousedown', function(e){ start(e.clientY); e.preventDefault(); });
-    window.addEventListener('mousemove', function(e){ if(dragging) move(e.clientY); });
+    sheet.addEventListener('touchstart', function(e){ start(e.touches[0].clientY, e.target); }, {passive:true});
+    sheet.addEventListener('touchmove', function(e){ move(e.touches[0].clientY, e); }, {passive:false});
+    sheet.addEventListener('touchend', end);
+    sheet.addEventListener('mousedown', function(e){ start(e.clientY, e.target); if(tracking) e.preventDefault(); });
+    window.addEventListener('mousemove', function(e){ if(tracking) move(e.clientY); });
     window.addEventListener('mouseup', end);
   })();
 
