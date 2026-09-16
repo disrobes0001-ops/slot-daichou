@@ -74,15 +74,16 @@
 
   /* ---- iOS-like tap feedback ---- */
   .mcard, .icon-btn, .backbtn, .starbtn, .fab, .card .edit, .segment button,
-  .hrow .hdel, .mcard .star, #previewWrap button, .imgpick{
+  .hrow .hdel, .mcard .star, .formImgItem .rm, .imgpick, .dthumb{
     transition:transform .12s ease, opacity .12s ease, background-color .12s ease;
     -webkit-user-select:none; user-select:none;
   }
   .mcard:active{transform:scale(.98);}
   .icon-btn:active, .backbtn:active, .starbtn:active{transform:scale(.90);}
   .fab:active{transform:scale(.92);}
-  .card .edit:active, .segment button:active, .hrow .hdel:active{opacity:.55;}
+  .card .edit:active, .segment button:active, .hrow .hdel:active, .formImgItem .rm:active{opacity:.55;}
   .imgpick:active{opacity:.8;}
+  .dthumb:active{transform:scale(.94);}
 
   main{flex:1; padding:12px 14px calc(90px + env(safe-area-inset-bottom));}
 
@@ -122,8 +123,10 @@
   .starbtn{flex:0 0 auto; width:34px; height:34px; display:flex; align-items:center; justify-content:center; background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--border); cursor:pointer;}
   .starbtn.on{color:var(--gold); border-color:var(--gold);}
 
-  .dimg{width:84px; height:84px; object-fit:cover; border-radius:var(--radius-md); margin-bottom:10px; display:block; cursor:pointer;}
-  .dimg-ph{width:84px; height:60px; border-radius:var(--radius-md); margin-bottom:10px; background:var(--surface-2); border:1px dashed var(--border); display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--text-sub); gap:2px; font-size:9.5px; cursor:pointer;}
+  .dimg-row{display:flex; gap:8px; overflow-x:auto; margin-bottom:10px; padding-bottom:2px;}
+  .dimg-row::-webkit-scrollbar{display:none;}
+  .dthumb{width:84px; height:84px; object-fit:cover; border-radius:var(--radius-md); display:block; cursor:pointer; flex:0 0 auto;}
+  .dimg-ph{width:84px; height:84px; border-radius:var(--radius-md); flex:0 0 auto; background:var(--surface-2); border:1px dashed var(--border); display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--text-sub); gap:2px; font-size:9.5px; cursor:pointer;}
   .dimg-ph svg{width:16px; height:16px;}
 
   .card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-md); padding:11px 12px; margin-bottom:9px;}
@@ -177,9 +180,12 @@
 
   .imgpick{margin-top:6px; display:block; border:2px dashed var(--border); border-radius:var(--radius-lg); padding:20px 14px; text-align:center; color:var(--text-sub); font-size:12.5px; line-height:1.8; cursor:pointer; background:var(--surface-2);}
   .imgpick input{display:none;}
-  #previewWrap{margin-top:8px; position:relative; display:none;}
-  #previewWrap img{width:100%; max-height:200px; object-fit:cover; border-radius:var(--radius-md);}
-  #previewWrap button{position:absolute; top:6px; right:6px; background:rgba(0,0,0,.6); color:#fff; border:none; border-radius:50%; width:26px; height:26px; font-size:14px; cursor:pointer;}
+  .formImgRow{display:flex; gap:8px; overflow-x:auto; margin-top:8px; padding-bottom:2px; display:none;}
+  .formImgRow::-webkit-scrollbar{display:none;}
+  .formImgRow.on{display:flex;}
+  .formImgItem{position:relative; flex:0 0 auto;}
+  .formImgItem img{width:72px; height:72px; object-fit:cover; border-radius:var(--radius-sm); display:block;}
+  .formImgItem .rm{position:absolute; top:-6px; right:-6px; width:22px; height:22px; border-radius:50%; background:rgba(0,0,0,.65); color:#fff; border:none; font-size:12px; line-height:1; cursor:pointer;}
 
   #lightbox{position:fixed; inset:0; z-index:60; background:rgba(0,0,0,.92); display:none; align-items:center; justify-content:center; padding:20px;}
   #lightbox.on{display:flex;}
@@ -226,12 +232,12 @@
     <label>よみがな <span class="hint">(50音順の並び替えに使用・ひらがな推奨)</span></label>
     <input id="fYomi" placeholder="例）りぜろ">
 
-    <label>画像</label>
+    <label>画像 <span class="hint">(複数枚追加できます)</span></label>
+    <div id="formImgRow" class="formImgRow"></div>
     <label class="imgpick" id="imgPick" for="fImg">
-      <span id="pickHint">タップして画像を選択(カメラロールから選べます)</span>
-      <input id="fImg" type="file" accept="image/*">
+      <span id="pickHint">タップして画像を選択(カメラロールから複数選択できます)</span>
+      <input id="fImg" type="file" accept="image/*" multiple>
     </label>
-    <div id="previewWrap"><img id="previewImg"><button id="clearImg">✕</button></div>
 
     <label>狙い目</label>
     <textarea id="fNeraime" placeholder="例）天井○○Gから、ゾーン狙い、設定示唆区間など"></textarea>
@@ -283,7 +289,6 @@
   function signStr(n){ return (n > 0 ? '+' : '') + n.toLocaleString(); }
 
   var editingId = null;
-  var pendingImage = null;
   var currentDetailId = null;
   var editingSessionId = null;
   var sortMode = localStorage.getItem(LS_SORT) || 'yomi';
@@ -316,8 +321,13 @@
     return list;
   }
 
+  function firstImage(m){
+    return (m.images && m.images.length) ? m.images[0] : (m.image || null);
+  }
+
   function machineCardHTML(m){
-    var thumb = m.image ? ('<img class="thumb" src="'+m.image+'">') : ('<div class="thumb-ph">'+ICON_IMG+'</div>');
+    var img0 = firstImage(m);
+    var thumb = img0 ? ('<img class="thumb" src="'+img0+'">') : ('<div class="thumb-ph">'+ICON_IMG+'</div>');
     var sub = m.neraime ? esc(m.neraime.split(/\n/)[0]) : '<span class="hint">狙い目未登録</span>';
     var kv = m.kitaiValue ? '<div class="kv">'+esc(m.kitaiValue)+'</div>' : '';
     return '<div class="mcard" data-id="'+m.id+'">'+thumb+
@@ -400,10 +410,25 @@
   var fNeraime = document.getElementById('fNeraime');
   var fKitaiValue = document.getElementById('fKitaiValue');
   var fImg = document.getElementById('fImg');
-  var previewWrap = document.getElementById('previewWrap');
-  var previewImg = document.getElementById('previewImg');
+  var formImgRow = document.getElementById('formImgRow');
   var delMachineBtn = document.getElementById('delMachineBtn');
   var formTitle = document.getElementById('formTitle');
+  var pendingImages = [];
+
+  function renderFormImgRow(){
+    if(!pendingImages.length){ formImgRow.classList.remove('on'); formImgRow.innerHTML = ''; return; }
+    formImgRow.classList.add('on');
+    formImgRow.innerHTML = pendingImages.map(function(src, i){
+      return '<div class="formImgItem" data-idx="'+i+'"><img src="'+src+'"><button type="button" class="rm" data-idx="'+i+'">&times;</button></div>';
+    }).join('');
+  }
+  formImgRow.addEventListener('click', function(e){
+    var rm = e.target.closest('.rm');
+    if(!rm) return;
+    var idx = Number(rm.getAttribute('data-idx'));
+    pendingImages.splice(idx, 1);
+    renderFormImgRow();
+  });
 
   function openForm(machine){
     editingId = machine ? machine.id : null;
@@ -412,31 +437,28 @@
     fYomi.value = machine ? (machine.yomi||'') : '';
     fNeraime.value = machine ? (machine.neraime||'') : '';
     fKitaiValue.value = machine ? (machine.kitaiValue||'') : '';
-    pendingImage = machine ? (machine.image||null) : null;
-    if(pendingImage){ previewImg.src = pendingImage; previewWrap.style.display = 'block'; }
-    else { previewWrap.style.display = 'none'; previewImg.src = ''; }
+    pendingImages = machine ? (machine.images && machine.images.length ? machine.images.slice() : (machine.image ? [machine.image] : [])) : [];
+    renderFormImgRow();
     fImg.value = '';
     delMachineBtn.style.display = machine ? 'block' : 'none';
     formOvl.classList.add('on');
   }
-  function closeForm(){ formOvl.classList.remove('on'); editingId = null; pendingImage = null; }
+  function closeForm(){ formOvl.classList.remove('on'); editingId = null; pendingImages = []; }
 
   document.getElementById('fabAdd').addEventListener('click', function(){ openForm(null); });
   document.getElementById('cancelBtn').addEventListener('click', closeForm);
   formOvl.addEventListener('click', function(e){ if(e.target === formOvl) closeForm(); });
 
-  function handleImageFile(file){
-    if(!file) return;
-    readAndCompress(file, function(dataUrl){
-      pendingImage = dataUrl;
-      previewImg.src = dataUrl;
-      previewWrap.style.display = 'block';
+  fImg.addEventListener('change', function(){
+    var files = fImg.files;
+    if(!files || !files.length) return;
+    Array.prototype.forEach.call(files, function(file){
+      readAndCompress(file, function(dataUrl){
+        pendingImages.push(dataUrl);
+        renderFormImgRow();
+      });
     });
-  }
-  fImg.addEventListener('change', function(){ handleImageFile(fImg.files && fImg.files[0]); });
-  document.getElementById('clearImg').addEventListener('click', function(e){
-    e.preventDefault();
-    pendingImage = null; fImg.value = ''; previewWrap.style.display = 'none'; previewImg.src = '';
+    fImg.value = '';
   });
 
   document.getElementById('saveBtn').addEventListener('click', function(){
@@ -448,7 +470,8 @@
       yomi: fYomi.value.trim(),
       neraime: fNeraime.value.trim(),
       kitaiValue: fKitaiValue.value.trim(),
-      image: pendingImage,
+      images: pendingImages.slice(),
+      image: pendingImages[0] || null,
       favorite: editingId ? (machines.find(function(x){return x.id===editingId;})||{}).favorite || false : false,
       sessions: editingId ? (machines.find(function(x){return x.id===editingId;})||{}).sessions || [] : [],
       createdAt: editingId ? (machines.find(function(x){return x.id===editingId;})||{}).createdAt || Date.now() : Date.now()
@@ -496,8 +519,11 @@
     html += '<button class="starbtn'+(m.favorite?' on':'')+'" id="starBtn">'+(m.favorite?ICON_STAR_ON:ICON_STAR_OFF)+'</button>';
     html += '</div>';
 
-    if(m.image) html += '<img class="dimg" id="detailImg" src="'+m.image+'">';
-    else html += '<div class="dimg-ph" id="dimgPh">'+ICON_IMG+'<span>タップで追加</span></div>';
+    var imgs = (m.images && m.images.length) ? m.images : (m.image ? [m.image] : []);
+    html += '<div class="dimg-row">';
+    html += imgs.map(function(src){ return '<img class="dthumb" src="'+src+'">'; }).join('');
+    html += '<div class="dimg-ph" id="dimgPh">'+ICON_IMG+'<span>'+(imgs.length ? '追加' : 'タップで追加')+'</span></div>';
+    html += '</div>';
 
     html += '<div class="card neraime-card"><div class="chd"><h2>狙い目</h2><button class="edit" id="editBtn1">'+ICON_EDIT+' 編集</button></div>';
     html += '<div class="body-text'+(m.neraime?'':' muted')+'">'+(m.neraime?esc(m.neraime):'まだ入力されていません')+'</div></div>';
@@ -555,8 +581,9 @@
       return;
     }
     if(e.target.closest('#editBtn1') || e.target.closest('#editBtn2') || e.target.closest('#dimgPh')){ openForm(m); return; }
-    if(e.target.closest('#detailImg')){
-      document.getElementById('lbImg').src = m.image;
+    var thumbEl = e.target.closest('.dthumb');
+    if(thumbEl){
+      document.getElementById('lbImg').src = thumbEl.getAttribute('src');
       document.getElementById('lightbox').classList.add('on');
       return;
     }
