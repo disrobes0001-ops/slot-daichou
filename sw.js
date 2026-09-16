@@ -1,4 +1,4 @@
-var CACHE_NAME = 'sdc-shell-v4';
+var CACHE_NAME = 'sdc-shell-v5';
 var SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', function(e){
