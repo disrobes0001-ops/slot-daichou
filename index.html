@@ -123,7 +123,7 @@
   .starbtn.on{color:var(--gold); border-color:var(--gold);}
 
   .dimg{width:84px; height:84px; object-fit:cover; border-radius:var(--radius-md); margin-bottom:10px; display:block; cursor:pointer;}
-  .dimg-ph{width:84px; height:60px; border-radius:var(--radius-md); margin-bottom:10px; background:var(--surface-2); border:1px dashed var(--border); display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--text-sub); gap:2px; font-size:9.5px;}
+  .dimg-ph{width:84px; height:60px; border-radius:var(--radius-md); margin-bottom:10px; background:var(--surface-2); border:1px dashed var(--border); display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--text-sub); gap:2px; font-size:9.5px; cursor:pointer;}
   .dimg-ph svg{width:16px; height:16px;}
 
   .card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-md); padding:11px 12px; margin-bottom:9px;}
@@ -497,7 +497,7 @@
     html += '</div>';
 
     if(m.image) html += '<img class="dimg" id="detailImg" src="'+m.image+'">';
-    else html += '<div class="dimg-ph">'+ICON_IMG+'<span>画像未登録</span></div>';
+    else html += '<div class="dimg-ph" id="dimgPh">'+ICON_IMG+'<span>タップで追加</span></div>';
 
     html += '<div class="card neraime-card"><div class="chd"><h2>狙い目</h2><button class="edit" id="editBtn1">'+ICON_EDIT+' 編集</button></div>';
     html += '<div class="body-text'+(m.neraime?'':' muted')+'">'+(m.neraime?esc(m.neraime):'まだ入力されていません')+'</div></div>';
@@ -554,7 +554,7 @@
       renderDetail(m);
       return;
     }
-    if(e.target.closest('#editBtn1') || e.target.closest('#editBtn2')){ openForm(m); return; }
+    if(e.target.closest('#editBtn1') || e.target.closest('#editBtn2') || e.target.closest('#dimgPh')){ openForm(m); return; }
     if(e.target.closest('#detailImg')){
       document.getElementById('lbImg').src = m.image;
       document.getElementById('lightbox').classList.add('on');
