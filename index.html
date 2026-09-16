@@ -171,11 +171,13 @@
   /* ---- sheets ---- */
   .ovl{position:fixed; inset:0; z-index:45; background:rgba(0,0,0,.55); display:none; align-items:flex-end;}
   .ovl.on{display:flex;}
-  .sheet{width:100%; max-height:92vh; overflow-y:auto; background:var(--surface); border-radius:22px 22px 0 0; padding:16px 16px calc(22px + env(safe-area-inset-bottom)); border-top:1px solid var(--border); box-shadow:var(--shadow-sheet); transition:transform .25s ease;}
+  .sheet{width:100%; max-height:92vh; display:flex; flex-direction:column; background:var(--surface); border-radius:22px 22px 0 0; padding:0 16px calc(22px + env(safe-area-inset-bottom)); border-top:1px solid var(--border); box-shadow:var(--shadow-sheet); transition:transform .25s ease;}
   .sheet.dragging{transition:none;}
-  .sheet h2{margin:2px 0 14px; font-size:17px;}
-  .sheetHandle{margin:-16px -16px 0; padding:16px 0 16px; touch-action:none; cursor:grab;}
+  .sheetHeader{flex:0 0 auto; touch-action:none; cursor:grab; padding-top:8px;}
+  .sheetHeader h2{margin:2px 0 14px; font-size:17px;}
+  .sheetHandle{padding:8px 0 14px;}
   .grip{width:40px; height:4px; border-radius:2px; background:var(--border); margin:0 auto;}
+  .sheetBody{flex:1 1 auto; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch;}
   .hint{color:var(--text-sub); font-weight:500; font-size:11px; line-height:1.6;}
 
   .imgpick{margin-top:6px; display:block; border:2px dashed var(--border); border-radius:var(--radius-lg); padding:20px 14px; text-align:center; color:var(--text-sub); font-size:12.5px; line-height:1.8; cursor:pointer; background:var(--surface-2);}
@@ -223,8 +225,11 @@
 
 <div class="ovl" id="formOvl">
   <div class="sheet">
-    <div class="sheetHandle"><div class="grip"></div></div>
-    <h2 id="formTitle">機種を登録</h2>
+    <div class="sheetHeader">
+      <div class="sheetHandle"><div class="grip"></div></div>
+      <h2 id="formTitle">機種を登録</h2>
+    </div>
+    <div class="sheetBody" id="sheetBody">
 
     <label>機種名</label>
     <input id="fName" placeholder="例）リゼロ、北斗の拳など">
@@ -248,6 +253,7 @@
     <button class="btn" id="saveBtn" style="margin-top:20px">保存</button>
     <button class="btn danger ghost" id="delMachineBtn" style="display:none; margin-top:8px">この機種を削除</button>
     <button class="btn ghost" id="cancelBtn" style="margin-top:8px">キャンセル</button>
+    </div>
   </div>
 </div>
 
@@ -431,6 +437,7 @@
   });
 
   function openForm(machine){
+    formOvl.querySelector('.sheet').style.transform = '';
     editingId = machine ? machine.id : null;
     formTitle.textContent = machine ? '機種を編集' : '機種を登録';
     fName.value = machine ? (machine.name||'') : '';
@@ -669,47 +676,40 @@
   })();
 
   // ---------- swipe-down-to-close for the add/edit sheet ----------
-  // Works from anywhere on the sheet (not just the handle), like an iOS
-  // modal: while the content is scrolled to the top, a downward drag pulls
-  // the sheet closed instead of scrolling; once you're mid-scroll it just
-  // scrolls normally until you're back at the top.
+  // The drag zone is the header (grip + title), which sits outside the
+  // scrollable .sheetBody and has touch-action:none in CSS. Dragging from
+  // inside the scrollable body is unreliable in real touch browsers: once
+  // the browser's native scroll gesture has taken the touch sequence,
+  // calling preventDefault() from JS on a later touchmove can't undo it,
+  // so a whole-sheet drag looked fine in synthetic tests but didn't
+  // actually work on a real phone. Keeping the drag surface entirely
+  // outside the scrollable area sidesteps that race condition.
   (function(){
     var sheet = formOvl.querySelector('.sheet');
-    var startY = 0, dy = 0, dragging = false, tracking = false;
-    function isInteractive(el){
-      return !!(el.closest && el.closest('input, textarea, select, button, .formImgItem, .imgpick'));
-    }
-    function start(y, target){
-      if(target && isInteractive(target)){ tracking = false; return; }
-      tracking = true; dragging = false; dy = 0; startY = y;
-    }
-    function move(y, ev){
-      if(!tracking) return;
-      if(!dragging){
-        if(sheet.scrollTop > 0 || y - startY <= 0){ startY = y; return; }
-        dragging = true; sheet.classList.add('dragging');
-      }
+    var header = formOvl.querySelector('.sheetHeader');
+    var startY = 0, dy = 0, dragging = false;
+    function start(y){ dragging = true; dy = 0; sheet.classList.add('dragging'); startY = y; }
+    function move(y){
+      if(!dragging) return;
       dy = Math.max(0, y - startY);
       sheet.style.transform = 'translateY('+dy+'px)';
-      if(ev && ev.cancelable) ev.preventDefault();
     }
     function end(){
-      if(dragging){
-        sheet.classList.remove('dragging');
-        if(dy > 80){
-          sheet.style.transform = 'translateY(100%)';
-          setTimeout(function(){ closeForm(); sheet.style.transform = ''; }, 200);
-        } else {
-          sheet.style.transform = '';
-        }
+      if(!dragging) return;
+      dragging = false;
+      sheet.classList.remove('dragging');
+      if(dy > 80){
+        sheet.style.transform = 'translateY(100%)';
+        setTimeout(function(){ closeForm(); sheet.style.transform = ''; }, 200);
+      } else {
+        sheet.style.transform = '';
       }
-      tracking = false; dragging = false;
     }
-    sheet.addEventListener('touchstart', function(e){ start(e.touches[0].clientY, e.target); }, {passive:true});
-    sheet.addEventListener('touchmove', function(e){ move(e.touches[0].clientY, e); }, {passive:false});
-    sheet.addEventListener('touchend', end);
-    sheet.addEventListener('mousedown', function(e){ start(e.clientY, e.target); if(tracking) e.preventDefault(); });
-    window.addEventListener('mousemove', function(e){ if(tracking) move(e.clientY); });
+    header.addEventListener('touchstart', function(e){ start(e.touches[0].clientY); }, {passive:true});
+    header.addEventListener('touchmove', function(e){ move(e.touches[0].clientY); }, {passive:true});
+    header.addEventListener('touchend', end);
+    header.addEventListener('mousedown', function(e){ start(e.clientY); e.preventDefault(); });
+    window.addEventListener('mousemove', function(e){ if(dragging) move(e.clientY); });
     window.addEventListener('mouseup', end);
   })();
 
