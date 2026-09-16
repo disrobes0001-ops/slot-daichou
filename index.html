@@ -149,7 +149,8 @@
   .sumcell .v{font-size:13px; font-weight:800; margin-top:1px;}
   .sumcell .v.pl{color:var(--positive);} .sumcell .v.mi{color:var(--negative);}
 
-  .hrow{display:flex; align-items:center; gap:7px; padding:7px 3px; border-top:1px solid var(--border);}
+  .hrow{display:flex; align-items:center; gap:7px; padding:7px 3px; border-top:1px solid var(--border); cursor:pointer;}
+  .hrow.editing{background:var(--accent-soft); border-radius:var(--radius-sm);}
   .hrow .hd2{font-size:10px; color:var(--text-sub); flex:0 0 60px;}
   .hrow .hv{font-size:12.5px; font-weight:800; flex:0 0 auto; min-width:58px;}
   .hrow .hv.pl{color:var(--positive);} .hrow .hv.mi{color:var(--negative);}
@@ -285,6 +286,7 @@
   var editingId = null;
   var pendingImage = null;
   var currentDetailId = null;
+  var editingSessionId = null;
   var sortMode = localStorage.getItem(LS_SORT) || 'yomi';
 
   // ---------- icons ----------
@@ -296,6 +298,7 @@
   var ICON_EDIT = '<svg class="ic ic-sm" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/></svg>';
   var ICON_TRASH = '<svg class="ic ic-sm" viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/></svg>';
   var ICON_PLUS = '<svg class="ic" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
+  var ICON_CHECK = '<svg class="ic" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>';
 
   // ---------- list view ----------
   var listBody = document.getElementById('listBody');
@@ -519,6 +522,7 @@
     html += '<button class="btn" id="sAddBtn" style="width:44px;height:44px;padding:0;flex:0 0 auto">'+ICON_PLUS+'</button>';
     html += '</div>';
     html += '<input id="sMemo" placeholder="メモ（任意）" style="margin-bottom:2px">';
+    html += '<div class="hint" style="margin:4px 0 2px">記録をタップすると内容を編集できます</div>';
     html += '<div class="sumgrid">';
     html += '<div class="sumcell"><div class="l">合計</div><div class="v '+signClass(sum.total)+'">'+signStr(sum.total)+'</div></div>';
     html += '<div class="sumcell"><div class="l">平均</div><div class="v '+signClass(sum.avg)+'">'+signStr(sum.avg)+'</div></div>';
@@ -545,6 +549,7 @@
     var m = machines.find(function(x){ return x.id === id; });
     if(!m) return;
     currentDetailId = id;
+    editingSessionId = null;
     listView.style.display = 'none';
     detailView.style.display = 'block';
     document.getElementById('fabAdd').style.display = 'none';
@@ -576,7 +581,17 @@
       var v = valueEl.value.trim();
       if(v === ''){ alert('期待値の数値を入力してください'); return; }
       m.sessions = m.sessions || [];
-      m.sessions.push({ id: uid(), date: dateEl.value || todayStr(), value: Number(v), memo: memoEl.value.trim(), createdAt: Date.now() });
+      if(editingSessionId){
+        var target = m.sessions.find(function(x){ return x.id === editingSessionId; });
+        if(target){
+          target.date = dateEl.value || todayStr();
+          target.value = Number(v);
+          target.memo = memoEl.value.trim();
+        }
+        editingSessionId = null;
+      } else {
+        m.sessions.push({ id: uid(), date: dateEl.value || todayStr(), value: Number(v), memo: memoEl.value.trim(), createdAt: Date.now() });
+      }
       saveMachines();
       renderDetail(m);
       return;
@@ -584,9 +599,35 @@
     var delBtn = e.target.closest('.hdel');
     if(delBtn){
       var sid = delBtn.getAttribute('data-id');
+      if(editingSessionId === sid) editingSessionId = null;
       m.sessions = (m.sessions||[]).filter(function(s){ return s.id !== sid; });
       saveMachines();
       renderDetail(m);
+      return;
+    }
+    var hrow = e.target.closest('.hrow');
+    if(hrow){
+      var hid = hrow.getAttribute('data-id');
+      var dateEl2 = document.getElementById('sDate');
+      var valueEl2 = document.getElementById('sValue');
+      var memoEl2 = document.getElementById('sMemo');
+      var addBtn2 = document.getElementById('sAddBtn');
+      document.querySelectorAll('.hrow.editing').forEach(function(r){ r.classList.remove('editing'); });
+      if(editingSessionId === hid){
+        editingSessionId = null;
+        dateEl2.value = todayStr(); valueEl2.value = ''; memoEl2.value = '';
+        addBtn2.innerHTML = ICON_PLUS;
+        return;
+      }
+      var s = (m.sessions||[]).find(function(x){ return x.id === hid; });
+      if(!s) return;
+      editingSessionId = hid;
+      dateEl2.value = s.date || todayStr();
+      valueEl2.value = s.value;
+      memoEl2.value = s.memo || '';
+      addBtn2.innerHTML = ICON_CHECK;
+      hrow.classList.add('editing');
+      valueEl2.focus();
       return;
     }
   });
