@@ -38,6 +38,16 @@
 
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   html,body{margin:0; padding:0; background:var(--bg);}
+
+  /* ---- iOS-like slide transition between list/detail (View Transitions API) ---- */
+  @keyframes sdc-slide-out-left{ from{transform:translateX(0);} to{transform:translateX(-28%);} }
+  @keyframes sdc-slide-in-right{ from{transform:translateX(100%);} to{transform:translateX(0);} }
+  @keyframes sdc-slide-out-right{ from{transform:translateX(0);} to{transform:translateX(100%);} }
+  @keyframes sdc-slide-in-left{ from{transform:translateX(-28%);} to{transform:translateX(0);} }
+  html[data-nav-dir="forward"]::view-transition-old(root){ animation:.32s cubic-bezier(.32,.72,0,1) both sdc-slide-out-left; z-index:1; }
+  html[data-nav-dir="forward"]::view-transition-new(root){ animation:.32s cubic-bezier(.32,.72,0,1) both sdc-slide-in-right; z-index:2; }
+  html[data-nav-dir="back"]::view-transition-old(root){ animation:.32s cubic-bezier(.32,.72,0,1) both sdc-slide-out-right; z-index:2; }
+  html[data-nav-dir="back"]::view-transition-new(root){ animation:.32s cubic-bezier(.32,.72,0,1) both sdc-slide-in-left; z-index:1; }
   body{
     color:var(--text);
     font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic UI","Yu Gothic",Meiryo,sans-serif;
@@ -61,6 +71,18 @@
   .topbar-title{flex:1; min-width:0; font-size:17px; font-weight:800; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:flex; align-items:center; gap:8px;}
   .icon-btn{width:38px; height:38px; display:flex; align-items:center; justify-content:center; background:transparent; border:none; border-radius:var(--radius-sm); color:var(--text); cursor:pointer;}
   .icon-btn:active{background:var(--surface-2);}
+
+  /* ---- iOS-like tap feedback ---- */
+  .mcard, .icon-btn, .backbtn, .starbtn, .fab, .card .edit, .segment button,
+  .hrow .hdel, .mcard .star, #previewWrap button, .imgpick{
+    transition:transform .12s ease, opacity .12s ease, background-color .12s ease;
+    -webkit-user-select:none; user-select:none;
+  }
+  .mcard:active{transform:scale(.98);}
+  .icon-btn:active, .backbtn:active, .starbtn:active{transform:scale(.90);}
+  .fab:active{transform:scale(.92);}
+  .card .edit:active, .segment button:active, .hrow .hdel:active{opacity:.55;}
+  .imgpick:active{opacity:.8;}
 
   main{flex:1; padding:12px 14px calc(90px + env(safe-area-inset-bottom));}
 
@@ -146,7 +168,8 @@
   /* ---- sheets ---- */
   .ovl{position:fixed; inset:0; z-index:45; background:rgba(0,0,0,.55); display:none; align-items:flex-end;}
   .ovl.on{display:flex;}
-  .sheet{width:100%; max-height:92vh; overflow-y:auto; background:var(--surface); border-radius:22px 22px 0 0; padding:16px 16px calc(22px + env(safe-area-inset-bottom)); border-top:1px solid var(--border); box-shadow:var(--shadow-sheet);}
+  .sheet{width:100%; max-height:92vh; overflow-y:auto; background:var(--surface); border-radius:22px 22px 0 0; padding:16px 16px calc(22px + env(safe-area-inset-bottom)); border-top:1px solid var(--border); box-shadow:var(--shadow-sheet); transition:transform .25s ease;}
+  .sheet.dragging{transition:none;}
   .sheet h2{margin:2px 0 14px; font-size:17px;}
   .sheetHandle{margin:-16px -16px 0; padding:16px 0 16px; touch-action:none; cursor:grab;}
   .grip{width:40px; height:4px; border-radius:2px; background:var(--border); margin:0 auto;}
@@ -324,10 +347,26 @@
     renderList();
   });
 
+  // ---------- iOS-like navigation transition ----------
+  function navigate(direction, fn){
+    document.documentElement.setAttribute('data-nav-dir', direction);
+    if(document.startViewTransition){
+      var vt = document.startViewTransition(fn);
+      // a rapid second navigation aborts the previous transition; that's
+      // expected (like iOS cutting a push short if you tap again), so
+      // swallow the rejection instead of letting it surface as an error
+      vt.ready.catch(function(){});
+      vt.finished.catch(function(){});
+      vt.updateCallbackDone.catch(function(){});
+    } else {
+      fn();
+    }
+  }
+
   listBody.addEventListener('click', function(e){
     var card = e.target.closest('.mcard');
     if(!card) return;
-    openDetail(card.getAttribute('data-id'));
+    navigate('forward', function(){ openDetail(card.getAttribute('data-id')); });
   });
 
   // ---------- image compression ----------
@@ -430,8 +469,7 @@
     machines = machines.filter(function(x){ return x.id !== editingId; });
     saveMachines();
     closeForm();
-    showList();
-    renderList();
+    navigate('back', showList);
   });
 
   // ---------- detail view ----------
@@ -518,7 +556,7 @@
     var m = machines.find(function(x){ return x.id === currentDetailId; });
     if(!m) return;
 
-    if(e.target.closest('#backBtn')){ showList(); return; }
+    if(e.target.closest('#backBtn')){ navigate('back', showList); return; }
     if(e.target.closest('#starBtn')){
       m.favorite = !m.favorite;
       saveMachines();
@@ -554,6 +592,57 @@
   });
 
   document.getElementById('lightbox').addEventListener('click', function(){ this.classList.remove('on'); });
+
+  // ---------- edge-swipe-back gesture (like iOS Safari) ----------
+  (function(){
+    var startX = null, startY = null, startTime = 0;
+    document.addEventListener('touchstart', function(e){
+      if(detailView.style.display === 'none') { startX = null; return; }
+      if(formOvl.classList.contains('on')) { startX = null; return; }
+      var t = e.touches[0];
+      if(t.clientX > 24){ startX = null; return; }
+      startX = t.clientX; startY = t.clientY; startTime = Date.now();
+    }, {passive:true});
+    document.addEventListener('touchend', function(e){
+      if(startX == null) return;
+      var t = e.changedTouches[0];
+      var dx = t.clientX - startX;
+      var dy = Math.abs(t.clientY - startY);
+      var dt = Date.now() - startTime;
+      startX = null;
+      if(dx > 60 && dy < 60 && dt < 700){ navigate('back', showList); }
+    }, {passive:true});
+  })();
+
+  // ---------- swipe-down-to-close for the add/edit sheet ----------
+  (function(){
+    var sheet = formOvl.querySelector('.sheet');
+    var handle = formOvl.querySelector('.sheetHandle');
+    var startY = 0, dy = 0, dragging = false;
+    function start(y){ dragging = true; dy = 0; sheet.classList.add('dragging'); startY = y; }
+    function move(y){
+      if(!dragging) return;
+      dy = Math.max(0, y - startY);
+      sheet.style.transform = 'translateY('+dy+'px)';
+    }
+    function end(){
+      if(!dragging) return;
+      dragging = false;
+      sheet.classList.remove('dragging');
+      if(dy > 80){
+        sheet.style.transform = 'translateY(100%)';
+        setTimeout(function(){ closeForm(); sheet.style.transform = ''; }, 200);
+      } else {
+        sheet.style.transform = '';
+      }
+    }
+    handle.addEventListener('touchstart', function(e){ start(e.touches[0].clientY); }, {passive:true});
+    handle.addEventListener('touchmove', function(e){ move(e.touches[0].clientY); }, {passive:true});
+    handle.addEventListener('touchend', end);
+    handle.addEventListener('mousedown', function(e){ start(e.clientY); e.preventDefault(); });
+    window.addEventListener('mousemove', function(e){ if(dragging) move(e.clientY); });
+    window.addEventListener('mouseup', end);
+  })();
 
   renderList();
 
